@@ -2294,6 +2294,26 @@ class AWSGuardDutyBucket(AWSCustomBucket):
         else:
             return AWSCustomBucket.load_information_from_file(self, log_key)
 
+# CHANGE 
+class CustomName(AWSCustomBucket):
+
+    def __init__(self, db_table_name, **kwargs):
+        AWSCustomBucket.__init__(self, db_table_name, **kwargs)
+        self.check_prefix = False
+        self.date_format = '%Y-%m-%d'
+
+    def load_information_from_file(self, log_key):
+        """Load data from a CustomName log file."""
+        with self.decompress_file(log_key=log_key) as f:
+            return  {"integration": self.db_table_name, 
+                     self.db_table_name : json.loads(f.read())
+                    }
+
+    def marker_only_logs_after(self, aws_region, aws_account_id):
+        return '{init}{only_logs_after}'.format(
+            init=self.get_full_prefix(aws_account_id, aws_region),
+            only_logs_after=self.only_logs_after.strftime(self.date_format)
+        )
 
 class CiscoUmbrella(AWSCustomBucket):
 
@@ -3554,6 +3574,8 @@ def get_script_arguments():
     parser.add_argument('-o', '--reparse', action='store_true', dest='reparse',
                         help='Parse the log file, even if its been parsed before', default=False)
     parser.add_argument('-t', '--type', dest='type', type=str, help='Bucket type.', default='cloudtrail')
+    parser.add_argument('-tn', '--type_name', dest='typeName', help='Specific Name of of custom type integration', 
+                        action='store')
     parser.add_argument('-g', '--aws_log_groups', dest='aws_log_groups', help='Name of the log group to be parsed',
                         default='')
     parser.add_argument('-P', '--remove-log-streams', action='store_true', dest='deleteLogStreams',
@@ -3601,7 +3623,12 @@ def main(argv):
             elif options.type.lower() == 'config':
                 bucket_type = AWSConfigBucket
             elif options.type.lower() == 'custom':
-                bucket_type = AWSCustomBucket
+                if options.typeName():
+                    bucket_type = CustomName(
+                        db_table_name=options.typeName().lower()
+                    )
+                else:    
+                    bucket_type = AWSCustomBucket
             elif options.type.lower() == 'guardduty':
                 bucket_type = AWSGuardDutyBucket
             elif options.type.lower() == 'cisco_umbrella':
